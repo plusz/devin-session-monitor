@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart":     [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "SessionEnd":       [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "UserPromptSubmit": [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "PermissionRequest":[ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "Stop":             [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "PostCompaction":   [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "PreToolUse":       [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ],
+    "PostToolUse":      [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.config/devin/devin-status-hook.py" } ] } ]
+  }
+}

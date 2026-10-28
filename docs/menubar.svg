@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="44" viewBox="0 0 920 44">
+  <!-- Mockup widoku paska menu macOS z widgetem DevinStatus -->
+  <rect x="0" y="0" width="920" height="44" rx="6" fill="#1e1e1e" opacity="0.92"/>
+  <!-- DevinStatus widget -->
+  <rect x="640" y="4" width="86" height="36" rx="5" fill="#2c2c2e"/>
+  <text x="652" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="13" fill="#e5e5ea">D 1</text>
+  <circle cx="700" cy="22" r="6" fill="#ffd60a"/>
+  <!-- inne ikony paska menu (placeholder) -->
+  <text x="745" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="14" fill="#e5e5ea">⚡</text>
+  <text x="775" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="14" fill="#e5e5ea">📶</text>
+  <text x="805" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="14" fill="#e5e5ea">🔋</text>
+  <text x="840" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="13" fill="#e5e5ea">20:50</text>
+  <!-- podpis -->
+  <text x="10" y="27" font-family="-apple-system, Helvetica, sans-serif" font-size="12" fill="#8e8e93">DevinStatus.app — widok paska menu (ilustracja)</text>
+</svg>

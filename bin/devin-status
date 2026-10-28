@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Live dashboard of Devin agent sessions (fed by devin-status-hook.py)
+DIR="$HOME/.devin-status"
+STALE_AFTER=600   # seconds; 'working' older than this is flagged stale
+
+color_for() {
+  case "$1" in
+    working)    printf '\033[32m' ;;  # green
+    waiting)    printf '\033[33m' ;;  # yellow
+    permission) printf '\033[38;5;208m' ;; # orange
+    question)   printf '\033[34m' ;;  # blue
+    starting)   printf '\033[37m' ;;  # white
+    *)          printf '\033[90m' ;;  # gray
+  esac
+}
+RESET='\033[0m'
+
+while true; do
+  clear
+  now=$(date +%s)
+  echo "DEVIN SESSIONS   $(date '+%H:%M:%S')"
+  printf "%-3s %-28s %-12s %-9s %-18s %s\n" "" "PROJECT" "STATE" "AGE" "SESSION" "LAST TOOL"
+  found=0
+  for f in "$DIR"/*.json; do
+    [ -e "$f" ] || continue
+    found=1
+    read -r sid project state ts tool < <(jq -r '[.session_id, .project, .state, .ts, .tool] | @tsv' "$f" 2>/dev/null)
+    [ -z "$sid" ] && continue
+    age=$(( now - ${ts%.*} ))
+    flag=""
+    if [ "$state" = "working" ] && [ "$age" -gt "$STALE_AFTER" ]; then flag=" [stale?]"; fi
+    printf "%-3s %-28s " "$(color_for "$state")●$RESET" "$project"
+    printf "%b%-12s%b %-9s %-18s %s\n" "$(color_for "$state")" "$state$flag" "$RESET" "${age}s" "${sid:0:8}" "$tool"
+  done
+  [ "$found" -eq 0 ] && echo "  (no active sessions — files appear when a Devin session emits an event)"
+  echo
+  echo "working=agent busy | waiting=turn done, needs you | permission=approval needed | question=dialog open"
+  echo "Ctrl+C to quit — refreshes every 2s"
+  sleep 2
+done
