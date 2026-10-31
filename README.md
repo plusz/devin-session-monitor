@@ -58,7 +58,7 @@ One file per session, written atomically (`~/.devin-status/<session_id>.json`):
 }
 ```
 
-`project` comes from the `DEVIN_PROJECT_DIR` env var that Devin sets for hook commands. `ts` is updated on every tool call, so consumers can detect stale sessions by age. Files older than 24h are garbage-collected by the hook itself.
+`project` comes from the `DEVIN_PROJECT_DIR` env var that Devin sets for hook commands. `ts` is updated on every tool call, so consumers can detect stale sessions by age. Files carry the spawning Devin process PID (dead process = dead sessions) and expire by state — `starting` after 5 min, `waiting`/`permission`/`question` after 1 h, `working` after 2 h. Expiry is self-healing: a revived session recreates its file on the next event. Files older than 24h are garbage-collected unconditionally.
 
 ## Components
 

@@ -2,12 +2,24 @@
 import glob
 import json
 import os
+import subprocess
 import sys
 import time
 import traceback
 
 STATUS_DIR = os.path.expanduser("~/.devin-status")
 ERR_LOG = os.path.join(STATUS_DIR, "hook-errors.log")
+
+# Per-state expiry (seconds). Files self-heal — a revived session recreates
+# its file on the next event — so expiring quiet files is safe.
+EXPIRY = {
+    "starting": 300,     # started but never produced another event = dead spawn
+    "question": 3600,
+    "permission": 3600,
+    "waiting": 3600,
+    "working": 7200,
+}
+DEFAULT_EXPIRY = 3600
 
 
 def log_err(msg):
@@ -73,7 +85,9 @@ def main():
         "state": state,
         "ts": time.time(),
         "tool": tool,
+        "event": event,
         "project": project if project != "?" else rec.get("project", "?"),
+        "pid": os.getppid(),
     })
     rec.setdefault("created", time.time())
 
@@ -82,8 +96,46 @@ def main():
         json.dump(rec, f)
     os.replace(tmp, path)
 
+    # Session files self-heal: any new hook event recreates the file, so
+    # expiring quiet files is safe. Devin only fires SessionEnd for top-level
+    # teardown — ended conversations/subagents inside a live process go quiet
+    # forever, so time-based expiry is the only reliable liveness signal.
     now = time.time()
-    for f in glob.glob(os.path.join(STATUS_DIR, "*.json")) + glob.glob(os.path.join(STATUS_DIR, "*.tmp")):
+    for f in glob.glob(os.path.join(STATUS_DIR, "*.json")):
+        if f == path:
+            continue
+        try:
+            if now - os.path.getmtime(f) > 86400:
+                os.remove(f)
+                continue
+            with open(f) as fh:
+                rec2 = json.load(fh)
+            if not isinstance(rec2, dict):
+                os.remove(f)
+                continue
+            ts2 = float(rec2.get("ts") or os.path.getmtime(f))
+            if now - ts2 > EXPIRY.get(rec2.get("state"), DEFAULT_EXPIRY):
+                os.remove(f)
+                continue
+            pid = rec2.get("pid")
+            if not pid:
+                continue
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                os.remove(f)
+            except PermissionError:
+                pass
+            else:
+                out = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "comm="],
+                    capture_output=True, text=True, timeout=2,
+                ).stdout
+                if "devin" not in out.lower():
+                    os.remove(f)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    for f in glob.glob(os.path.join(STATUS_DIR, "*.tmp")):
         try:
             if now - os.path.getmtime(f) > 86400:
                 os.remove(f)
