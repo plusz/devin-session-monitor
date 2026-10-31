@@ -7,10 +7,29 @@ struct Session: Codable {
     let state: String
     let ts: Double
     let tool: String?
+    let pid: Int?
+}
+
+struct Group {
+    let key: String
+    var project: String
+    var state: String
+    var ts: Double
+    var members: [Session]
 }
 
 let statusDir = (NSHomeDirectory() as NSString).appendingPathComponent(".devin-status")
 let staleAfter: TimeInterval = 600
+
+func stateRank(_ s: String) -> Int {
+    switch s {
+    case "permission": return 4
+    case "question":   return 3
+    case "working":    return 2
+    case "waiting":    return 1
+    default:           return 0
+    }
+}
 
 func colorFor(_ state: String, stale: Bool) -> NSColor {
     if stale { return .systemRed }
@@ -32,7 +51,22 @@ func loadSessions() -> [Session] {
               let s = try? JSONDecoder().decode(Session.self, from: d) else { continue }
         out.append(s)
     }
-    return out.sorted { $0.project < $1.project }
+    return out
+}
+
+// Group sessions by parent Devin process (one process = one window/instance).
+// Group state = highest-priority member state; ts = most recent member event.
+func loadGroups() -> [Group] {
+    var map: [String: Group] = [:]
+    for s in loadSessions() {
+        let key = s.pid.map { "p\($0)" } ?? "s\(s.session_id)"
+        var g = map[key] ?? Group(key: key, project: s.project, state: s.state, ts: s.ts, members: [])
+        g.members.append(s)
+        if s.ts > g.ts { g.ts = s.ts; g.project = s.project }
+        if stateRank(s.state) > stateRank(g.state) { g.state = s.state }
+        map[key] = g
+    }
+    return map.values.sorted { $0.project < $1.project }
 }
 
 func fmtAge(_ ts: Double) -> String {
@@ -56,44 +90,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func refresh(force: Bool) {
-        let sessions = loadSessions()
-        let sig = sessions.map { "\($0.session_id)|\($0.state)|\(Int($0.ts / 15))" }.joined(separator: ";")
+        let groups = loadGroups()
+        let sig = groups.map { g in
+            "\(g.key)|\(g.state)|\(Int(g.ts / 15))|\(g.members.count)"
+        }.joined(separator: ";")
         if !force && sig == lastSignature { return }
         lastSignature = sig
 
         let title = NSMutableAttributedString()
-        title.append(NSAttributedString(string: "D \(sessions.count) ", attributes: [
+        title.append(NSAttributedString(string: "D \(groups.count) ", attributes: [
             .foregroundColor: NSColor.labelColor,
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         ]))
-        if sessions.isEmpty {
+        if groups.isEmpty {
             title.append(NSAttributedString(string: "◌", attributes: [.foregroundColor: NSColor.gray]))
         } else {
-            for (i, s) in sessions.enumerated() {
-                let stale = s.state == "working" && (Date().timeIntervalSince1970 - s.ts) > staleAfter
+            for (i, g) in groups.enumerated() {
+                let stale = g.state == "working" && (Date().timeIntervalSince1970 - g.ts) > staleAfter
                 title.append(NSAttributedString(string: i == 0 ? "●" : " ●", attributes: [
-                    .foregroundColor: colorFor(s.state, stale: stale)
+                    .foregroundColor: colorFor(g.state, stale: stale)
                 ]))
             }
         }
         item.button?.attributedTitle = title
-        item.button?.toolTip = "Devin sessions: \(sessions.count)"
+        item.button?.toolTip = "Devin instances: \(groups.count)"
 
         let menu = NSMenu()
-        if sessions.isEmpty {
+        if groups.isEmpty {
             let m = NSMenuItem(title: "No Devin sessions reporting", action: nil, keyEquivalent: "")
             m.isEnabled = false
             menu.addItem(m)
         } else {
-            for s in sessions {
-                let stale = s.state == "working" && (Date().timeIntervalSince1970 - s.ts) > staleAfter
+            for g in groups {
+                let stale = g.state == "working" && (Date().timeIntervalSince1970 - g.ts) > staleAfter
                 let a = NSMutableAttributedString()
-                a.append(NSAttributedString(string: "● ", attributes: [.foregroundColor: colorFor(s.state, stale: stale)]))
-                a.append(NSAttributedString(string: "\(s.project) — \(s.state)\(stale ? " [stale?]" : "") (\(fmtAge(s.ts)) ago)", attributes: [:]))
+                a.append(NSAttributedString(string: "● ", attributes: [.foregroundColor: colorFor(g.state, stale: stale)]))
+                let suffix = g.members.count > 1 ? " (\(g.members.count) sessions)" : ""
+                a.append(NSAttributedString(string: "\(g.project) — \(g.state)\(stale ? " [stale?]" : "")\(suffix) · \(fmtAge(g.ts)) ago", attributes: [:]))
                 let m = NSMenuItem()
                 m.attributedTitle = a
                 m.isEnabled = false
                 menu.addItem(m)
+
+                for s in g.members.sorted(by: { $0.ts > $1.ts }) where g.members.count > 1 {
+                    let sub = NSMutableAttributedString()
+                    sub.append(NSAttributedString(string: "    ● ", attributes: [.foregroundColor: colorFor(s.state, stale: false)]))
+                    sub.append(NSAttributedString(string: "\(s.session_id) — \(s.state) (\(fmtAge(s.ts)))", attributes: [:]))
+                    let sm = NSMenuItem()
+                    sm.attributedTitle = sub
+                    sm.isEnabled = false
+                    menu.addItem(sm)
+                }
             }
         }
         menu.addItem(.separator())

@@ -1,40 +1,58 @@
 #!/usr/bin/env bash
-# Live dashboard of Devin agent sessions (fed by devin-status-hook.py)
+# Live dashboard of Devin instances (fed by devin-status-hook.py)
+# Groups by parent Devin process (pid) — one row per Devin window/instance.
 DIR="$HOME/.devin-status"
-STALE_AFTER=600   # seconds; 'working' older than this is flagged stale
+STALE_AFTER=600
 
 color_for() {
   case "$1" in
-    working)    printf '\033[32m' ;;  # green
-    waiting)    printf '\033[33m' ;;  # yellow
-    permission) printf '\033[38;5;208m' ;; # orange
-    question)   printf '\033[34m' ;;  # blue
-    starting)   printf '\033[37m' ;;  # white
-    *)          printf '\033[90m' ;;  # gray
+    working)    printf '\033[32m' ;;
+    waiting)    printf '\033[33m' ;;
+    permission) printf '\033[38;5;208m' ;;
+    question)   printf '\033[34m' ;;
+    starting)   printf '\033[37m' ;;
+    *)          printf '\033[90m' ;;
   esac
 }
 RESET='\033[0m'
 
+grouped() {
+  ls "$DIR"/*.json 2>/dev/null | xargs jq -rs '
+    def rank: {"permission":4,"question":3,"working":2,"waiting":1} as $m | ($m[.state] // 0);
+    map(. + {key: (. as $s | ($s.pid | if . == null then "s:\($s.session_id)" else "p:\(.)" end))})
+    | group_by(.key)
+    | map({
+        project: (max_by(.ts).project),
+        state:   (max_by(rank).state),
+        ts:      (map(.ts) | max),
+        cnt:     length,
+        key:     .[0].key
+      })
+    | sort_by(.project)[]
+    | [.project, .state, .ts, .cnt, .key] | @tsv
+  ' 2>/dev/null
+}
+
 while true; do
   clear
   now=$(date +%s)
-  echo "DEVIN SESSIONS   $(date '+%H:%M:%S')"
-  printf "%-3s %-28s %-12s %-9s %-18s %s\n" "" "PROJECT" "STATE" "AGE" "SESSION" "LAST TOOL"
+  echo "DEVIN INSTANCES   $(date '+%H:%M:%S')"
+  printf "%-3s %-28s %-14s %-9s %-9s %s\n" "" "PROJECT" "STATE" "AGE" "SESSIONS" "PROC"
+
   found=0
-  for f in "$DIR"/*.json; do
-    [ -e "$f" ] || continue
+  while IFS=$'\t' read -r project state ts cnt key; do
+    [ -z "$project" ] && continue
     found=1
-    read -r sid project state ts tool < <(jq -r '[.session_id, .project, .state, .ts, .tool] | @tsv' "$f" 2>/dev/null)
-    [ -z "$sid" ] && continue
     age=$(( now - ${ts%.*} ))
     flag=""
     if [ "$state" = "working" ] && [ "$age" -gt "$STALE_AFTER" ]; then flag=" [stale?]"; fi
     printf "%-3s %-28s " "$(color_for "$state")●$RESET" "$project"
-    printf "%b%-12s%b %-9s %-18s %s\n" "$(color_for "$state")" "$state$flag" "$RESET" "${age}s" "${sid:0:8}" "$tool"
-  done
-  [ "$found" -eq 0 ] && echo "  (no active sessions — files appear when a Devin session emits an event)"
+    printf "%b%-14s%b %-9s %-9s %s\n" "$(color_for "$state")" "$state$flag" "$RESET" "${age}s" "$cnt" "$key"
+  done < <(grouped)
+
+  [ "$found" -eq 0 ] && echo "  (no active instances — files appear when a Devin session emits an event)"
   echo
-  echo "working=agent busy | waiting=turn done, needs you | permission=approval needed | question=dialog open"
+  echo "one row per Devin process | working=busy waiting=needs you permission=approval question=dialog"
   echo "Ctrl+C to quit — refreshes every 2s"
   sleep 2
 done
